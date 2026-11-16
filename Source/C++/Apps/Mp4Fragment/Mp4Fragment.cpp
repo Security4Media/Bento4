@@ -301,6 +301,32 @@ public:
 };
 
 /*----------------------------------------------------------------------
+|   ReleaseFragments
++---------------------------------------------------------------------*/
+// Frees what Fragment() owns once the output movie is complete: the track
+// cursors, the fragments with their moof atoms, the segment records and the
+// output movie. Called on success and on every error return after that point.
+static void
+ReleaseFragments(AP4_Array<TrackCursor*>&      cursors,
+                 AP4_List<FragmentInfo>&       fragments,
+                 AP4_List<IndexedSegmentInfo>& indexed_segments,
+                 AP4_Movie*                    output_movie)
+{
+    for (unsigned int i=0; i<cursors.ItemCount(); i++) {
+        delete cursors[i];
+    }
+    for (AP4_List<FragmentInfo>::Item* item = fragments.FirstItem();
+                                       item;
+                                       item = item->GetNext()) {
+        FragmentInfo* fragment = item->GetData();
+        delete fragment->m_Moof;
+    }
+    fragments.DeleteReferences();
+    indexed_segments.DeleteReferences();
+    delete output_movie;
+}
+
+/*----------------------------------------------------------------------
 |   Fragment
 +---------------------------------------------------------------------*/
 static void
@@ -564,6 +590,7 @@ Fragment(AP4_File&                input_file,
                 result = cursor->m_Samples->GetSample(i, sample);
                 if (AP4_FAILED(result)) {
                     fprintf(stderr, "ERROR: failed to get sample %d (%d)\n", i, result);
+                    ReleaseFragments(cursors, fragments, indexed_segments, output_movie);
                     return;
                 }
                 if (!sample.IsSync()) continue; // only look for sync samples
@@ -572,6 +599,7 @@ Fragment(AP4_File&                input_file,
                 result = cursor->m_Samples->GetSample(i-1, sample);
                 if (AP4_FAILED(result)) {
                     fprintf(stderr, "ERROR: failed to get sample %d (%d)\n", i-1, result);
+                    ReleaseFragments(cursors, fragments, indexed_segments, output_movie);
                     return;
                 }
                 dts = sample.GetDts()+sample.GetDuration();
@@ -727,6 +755,7 @@ Fragment(AP4_File&                input_file,
             result = cursor->SetSampleIndex(cursor->m_SampleIndex+1);
             if (AP4_FAILED(result)) {
                 fprintf(stderr, "ERROR: failed to get sample %d (%d)\n", cursor->m_SampleIndex+1, result);
+                ReleaseFragments(cursors, fragments, indexed_segments, output_movie);
                 return;
             }
             sample_count++;
@@ -862,6 +891,8 @@ Fragment(AP4_File&                input_file,
             result = fragment->m_Samples->GetSample(fragment->m_SampleIndexes[i], sample);
             if (AP4_FAILED(result)) {
                 fprintf(stderr, "ERROR: failed to get sample %d (%d)\n", fragment->m_SampleIndexes[i], result);
+                delete sidx;
+                ReleaseFragments(cursors, fragments, indexed_segments, output_movie);
                 return;
             }
 
@@ -869,6 +900,8 @@ Fragment(AP4_File&                input_file,
             result = sample.ReadData(sample_data);
             if (AP4_FAILED(result)) {
                 fprintf(stderr, "ERROR: failed to read sample data for sample %d (%d)\n", fragment->m_SampleIndexes[i], result);
+                delete sidx;
+                ReleaseFragments(cursors, fragments, indexed_segments, output_movie);
                 return;
             }
             
@@ -876,6 +909,8 @@ Fragment(AP4_File&                input_file,
             result = output_stream.Write(sample_data.GetData(), sample_data.GetDataSize());
             if (AP4_FAILED(result)) {
                 fprintf(stderr, "ERROR: failed to write sample data (%d)\n", result);
+                delete sidx;
+                ReleaseFragments(cursors, fragments, indexed_segments, output_movie);
                 return;
             }
         }
@@ -916,22 +951,12 @@ Fragment(AP4_File&                input_file,
     result = mfra.Write(output_stream);
     if (AP4_FAILED(result)) {
         fprintf(stderr, "ERROR: failed to write 'mfra' (%d)\n", result);
+        ReleaseFragments(cursors, fragments, indexed_segments, output_movie);
         return;
     }
-    
+
     // cleanup
-    for (unsigned int i=0; i<cursors.ItemCount(); i++) {
-        delete cursors[i];
-    }
-    for (AP4_List<FragmentInfo>::Item* item = fragments.FirstItem();
-                                       item;
-                                       item = item->GetNext()) {
-        FragmentInfo* fragment = item->GetData();
-        delete fragment->m_Moof;
-    }
-    fragments.DeleteReferences();
-    indexed_segments.DeleteReferences();
-    delete output_movie;
+    ReleaseFragments(cursors, fragments, indexed_segments, output_movie);
 }
 
 /*----------------------------------------------------------------------
