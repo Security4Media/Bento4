@@ -346,6 +346,10 @@ Fragment(AP4_File&                input_file,
         result = cursors[i]->Init();
         if (AP4_FAILED(result)) {
             fprintf(stderr, "ERROR: failed to init sample cursor (%d), skipping track %d\n", result, track->GetId());
+            // mvex is not attached to the movie yet; the cursors are ours to delete
+            delete mvex;
+            delete output_movie;
+            for (unsigned int j=0; j<cursors.ItemCount(); j++) delete cursors[j];
             return;
         }
 
@@ -461,6 +465,10 @@ Fragment(AP4_File&                input_file,
     if (anchor_cursor == NULL) {
         // this should never happen
         fprintf(stderr, "ERROR: no anchor track\n");
+        // mvex is not attached to the movie yet; the cursors are ours to delete
+        delete mvex;
+        delete output_movie;
+        for (unsigned int i=0; i<cursors.ItemCount(); i++) delete cursors[i];
         return;
     }
     if (Options.debug) {
